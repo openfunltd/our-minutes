@@ -8,6 +8,81 @@ define('MINI_ENGINE_VERSION', '0.1.0');
 
 class MiniEngine
 {
+    protected static $session_data = null;
+
+    public static function getSessionDomain()
+    {
+        return getenv('SESSION_DOMAIN') ?: $_SERVER['HTTP_HOST'];
+    }
+
+    public static function getSessionTimeout()
+    {
+        return 60 * 60 * 24 * 30; // 30 days
+    }
+
+    public static function initSessionData()
+    {
+        if (is_null(self::$session_data)) {
+            $session_secret = getenv('SESSION_SECRET');
+            if (!$session_secret) {
+                throw new Exception("SESSION_SECRET is not set.");
+            }
+
+            $session = $_COOKIE[session_name()] ?? '';
+            $session = explode('|', $session, 2);
+            if (count($session) != 2) {
+                self::$session_data = new StdClass;
+                return;
+            }
+
+            $sig = $session[0];
+            $data = $session[1];
+            if ($sig != self::sessionSignature($data . self::getSessionDomain() . $session_secret)) {
+                self::$session_data = new StdClass;
+                return;
+            }
+
+            self::$session_data = json_decode($data);
+        }
+    }
+
+    public static function setSession($key, $value)
+    {
+        self::initSessionData();
+        if (self::$session_data->{$key} === $value) {
+            return;
+        }
+        self::$session_data->{$key} = $value;
+
+        $session_secret = getenv('SESSION_SECRET');
+        if (!$session_secret) {
+            throw new Exception("SESSION_SECRET is not set.");
+        }
+
+        $data = json_encode(self::$session_data);
+        $sig = self::sessionSignature(json_encode(self::$session_data) . self::getSessionDomain() . $session_secret);
+
+        setcookie(
+            session_name(), // name
+            $sig . '|' . $data, // value
+            self::getSessionTimeout() ? time() + self::getSessionTimeout() : null, // expire
+            '/', // path
+            self::getSessionDomain(), // domain
+            true // secure
+        );
+    }
+
+    public static function sessionSignature($data)
+    {
+        return hash_hmac('sha256', $data, getenv('SESSION_SECRET'));
+    }
+
+    public static function getSession($key)
+    {
+        self::initSessionData();
+        return self::$session_data->{$key} ?? null;
+    }
+
     protected static $db = null;
     public static function getDb()
     {
@@ -409,15 +484,22 @@ EOF
         error_log("created init.inc.php");
 
         // Create config.sample.inc.php
+        $session_secret = substr(str_shuffle(str_repeat('0123456789abcdefghijklmnopqrstuvwxyz', 12)), 0, 12);
         file_put_contents('config.sample.inc.php', <<<EOF
 <?php
 
 putenv('APP_NAME=Mini Engine sample application');
 putenv('DATABASE_URL=pgsql://user:password@localhost:5432/dbname');
+putenv('SESSION_SECRET=$session_secret');
+putenv('SESSION_DOMAIN='); // optional
 
 EOF
         );
         error_log("created config.sample.inc.php");
+        if (!file_exists('config.inc.php')) {
+            copy('config.sample.inc.php', 'config.inc.php');
+            error_log("created config.inc.php");
+        }
 
         // Create .gitignore
         file_put_contents('.gitignore', <<<EOF
