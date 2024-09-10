@@ -8,6 +8,30 @@ define('MINI_ENGINE_VERSION', '0.1.0');
 
 class MiniEngine
 {
+    protected static $db = null;
+    public static function getDb()
+    {
+        if (is_null(self::$db)) {
+            $url = getenv('DATABASE_URL');
+            if (!$url) {
+                throw new Exception("DATABASE_URL is not set.");
+            }
+
+            $url = parse_url($url);
+            $dsn = "{$url['scheme']}:host={$url['host']};port={$url['port']};dbname=" . ltrim($url['path'], '/');
+            self::$db = new PDO($dsn, $url['user'], $url['pass']);
+            self::$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        }
+        return self::$db;
+    }
+
+    public static function dbExecute($sql, $params = [])
+    {
+        $stmt = self::getDb()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    }
+
     public static function initEnv()
     {
         self::registerAutoLoad();
@@ -388,7 +412,8 @@ EOF
         file_put_contents('config.sample.inc.php', <<<EOF
 <?php
 
-putenv('APP_NAME', 'Mini Engine sample application');
+putenv('APP_NAME=Mini Engine sample application');
+putenv('DATABASE_URL=pgsql://user:password@localhost:5432/dbname');
 
 EOF
         );
