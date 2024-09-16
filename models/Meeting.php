@@ -1,5 +1,13 @@
 <?php
 
+class MeetingRow extends MiniEngine_Table_Row
+{
+    public function d($key)
+    {
+        return json_decode($this->data)->{$key} ?? null;
+    }
+}
+
 class Meeting extends MiniEngine_Table
 {
     public function init()
