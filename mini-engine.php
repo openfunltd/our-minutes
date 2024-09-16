@@ -824,10 +824,16 @@ class MiniEngine_Prompt
         if (file_exists(__DIR__ . '/init.inc.php')) {
             include(__DIR__ . '/init.inc.php');
         }
+        if (file_exists(__DIR__ . '/.prompt_history')) {
+            readline_read_history(__DIR__ . '/.prompt_history');
+        }
 
         while($line = readline(">> ")) {
             if (function_exists('readline_add_history')) {
                 readline_add_history($line);
+            }
+            if (function_exists('readline_write_history')) {
+                readline_write_history(__DIR__ . '/.prompt_history');
             }
             try {
                 eval($line . ";");
@@ -945,7 +951,8 @@ EOF
         // Create .gitignore
         file_put_contents('.gitignore', <<<EOF
 config.inc.php
-
+.*.swp
+.prompt_history
 EOF
         );
         error_log("created .gitignore");
