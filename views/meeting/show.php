@@ -1,4 +1,9 @@
 <?= $this->partial('common/header') ?>
+<h1>相關連結</h1>
+桌長專用連結：<a href="<?= $this->escape($this->meeting->getURL('host')) ?>"><?= $this->escape($this->meeting->getURL('host')) ?></a><br>
+投影專用連結：<a href="<?= $this->escape($this->meeting->getURL('screen')) ?>"><?= $this->escape($this->meeting->getURL('screen')) ?></a><br>
+會眾專用連結：<a href="<?= $this->escape($this->meeting->getURL('join')) ?>"><?= $this->escape($this->meeting->getURL('join')) ?></a><br>
+<hr>
 <form method="post">
 	<input type="hidden" name="csrf_token" value="<?= $this->csrf_token ?>">
 	<h1>編輯會議</h1>

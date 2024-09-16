@@ -61,4 +61,37 @@ class MeetingController extends MiniEngine_Controller
             return $this->alert('update success', '/meeting/show/' . $meeting->uid);
         }
     }
+
+    public function screenAction($meet_id, $secret)
+    {
+        if (!$meeting = Meeting::search(['uid' => $meet_id])->first()) {
+            return $this->notfound('meeting not found');
+        }
+        if ($meeting->d('screen_secret') != $secret) {
+            return $this->notfound('secret error');
+        }
+        return $this->notfound('TODO');
+    }
+
+    public function hostAction($meet_id, $secret)
+    {
+        if (!$meeting = Meeting::search(['uid' => $meet_id])->first()) {
+            return $this->notfound('meeting not found');
+        }
+        if ($meeting->d('host_secret') != $secret) {
+            return $this->notfound('secret error');
+        }
+        return $this->notfound('TODO');
+    }
+
+    public function joinAction($meet_id, $secret)
+    {
+        if (!$meeting = Meeting::search(['uid' => $meet_id])->first()) {
+            return $this->notfound('meeting not found');
+        }
+        if ($meeting->d('join_secret') != $secret) {
+            return $this->notfound('secret error');
+        }
+        return $this->notfound('TODO');
+    }
 }
