@@ -135,8 +135,17 @@ class MiniEngine
             }
         }, $sql);
         $stmt = self::getDb()->prepare($sql);
+        self::log($sql, $copy_params);
         $stmt->execute($copy_params);
         return $stmt;
+    }
+
+    public static function log($sql, $params)
+    {
+        if (getenv('ENV') == 'production') {
+            return;
+        }
+        error_log("SQL: $sql, Params: " . mb_strimwidth(json_encode($params, JSON_UNESCAPED_UNICODE), 0, 300, '...'));
     }
 
     public static function initEnv()
@@ -482,6 +491,8 @@ class MiniEngine_Table
 
     protected $_name = null;
     protected $_primary_keys = null;
+    protected $_columns = null;
+    protected $_indexes = null;
     protected $_table = null;
 
     public function init()
@@ -604,6 +615,67 @@ class MiniEngine_Table
         $rowset_class = $table->getResultSetClass();
         $rowset = new $rowset_class($conf);
         return $rowset->search($terms);
+    }
+
+    public static function createTable()
+    {
+        $table = self::getTableClass();
+        if (is_null($table->_columns)) {
+            throw new Exception("Columns not defined.");
+        }
+        $params = [
+            '::table' => $table->getTableName(),
+        ];
+        $cols = [];
+        foreach ($table->_columns as $col => $config) {
+            if (!array_key_exists('type', $config)) {
+                throw new Exception("Type not defined for column: $col");
+            }
+            if ($config['type'] == 'serial') {
+                $cols[] = "::col_{$col} SERIAL";
+                $params["::col_{$col}"] = $col;
+            } elseif ($config['type'] == 'integer' or $config['type'] == 'int') {
+                $cols[] = "::col_{$col} INTEGER";
+                $params["::col_{$col}"] = $col;
+            } elseif ($config['type'] == 'text') {
+                $cols[] = "::col_{$col} TEXT";
+                $params["::col_{$col}"] = $col;
+            } elseif ($config['type'] == 'varchar') {
+                $cols[] = "::col_{$col} VARCHAR(" . ($config['length'] ?? 255) . ")";
+                $params["::col_{$col}"] = $col;
+            } elseif ($config['type'] == 'jsonb') {
+                $cols[] = "::col_{$col} JSONB";
+                $params["::col_{$col}"] = $col;
+            } else {
+                throw new Exception("Unsupported column type: {$config['type']}");
+            }
+        }
+        $sql = "CREATE TABLE ::table (" . implode(', ', $cols) . ")";
+        MiniEngine::dbExecute($sql, $params);
+
+        if (is_array($table->_indexes) and count($table->_indexes)) {
+            foreach ($table->_indexes as $index_name => $config) {
+                if (!array_key_exists('columns', $config)) {
+                    throw new Exception("Columns not defined for index.");
+                }
+                $index_cols = [];
+                $params = [
+                    '::table' => $table->getTableName(),
+                    '::index_name' => $index_name,
+                ];
+                foreach ($config['columns'] as $col) {
+                    $index_cols[] = "::index_{$index_name}_{$col}";
+                    $params["::index_{$index_name}_{$col}"] = $col;
+                }
+
+                if (array_key_exists('unique', $config) and $config['unique']) {
+                    $sql = "CREATE UNIQUE INDEX ::index_name ON ::table (" . implode(', ', $index_cols) . ")";
+                } else {
+                    $sql = "CREATE INDEX ::index_name ON ::table (" . implode(', ', $index_cols) . ")";
+                }
+                MiniEngine::dbExecute($sql, $params);
+            }
+        }
     }
 
     public static function __callStatic($name, $args)
@@ -814,6 +886,16 @@ class MiniEngine_Table_Rowset implements Countable, SeekableIterator
     {
         $this->rewind();
         return $this->current();
+    }
+
+    public function toArray()
+    {
+        $this->rewind();
+        $data = [];
+        foreach ($this as $row) {
+            $data[] = $row->toArray();
+        }
+        return $data;
     }
 }
 
