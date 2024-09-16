@@ -483,6 +483,23 @@ class MiniEngine_Controller
         echo "</script>";
         return $this->noview();
     }
+
+    public function notfound($message)
+    {
+        throw new MiniEngine_Controller_NotFound($message);
+    }
+
+    public function init_csrf()
+    {
+        $csrf_token = MiniEngine::getSession('csrf_token');
+        if ($csrf_token) {
+            $this->view->csrf_token = $csrf_token;
+            return;
+        }
+        $csrf_token = bin2hex(random_bytes(32));
+        MiniEngine::setSession('csrf_token', $csrf_token);
+        $this->view->csrf_token = $csrf_token;
+    }
 }
 
 class MiniEngine_Table
