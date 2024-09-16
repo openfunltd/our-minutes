@@ -2,7 +2,7 @@
 
 define('MINI_ENGINE_LIBRARY', true);
 define('MINI_ENGINE_ROOT', __DIR__);
-include(__DIR__ . '/mini-engine.php');
+require_once(__DIR__ . '/mini-engine.php');
 if (file_exists(__DIR__ . '/config.inc.php')) {
     include(__DIR__ . '/config.inc.php');
 }
