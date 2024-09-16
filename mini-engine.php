@@ -627,11 +627,12 @@ class MiniEngine_Table_Row
 {
     protected $_table = null;
     protected $_data = null;
+    protected $_origin_data = null;
 
     public function __construct($conf)
     {
         $this->_table = $conf['table'];
-        $this->_data = $conf['data'];
+        $this->_data = $this->_origin_data = $conf['data'];
     }
 
     public function toArray()
@@ -652,6 +653,58 @@ class MiniEngine_Table_Row
         }
         $sql = "DELETE FROM ::table WHERE " . implode(' AND ', $terms);
         MiniEngine::dbExecute($sql, $params);
+    }
+
+    public function update($data)
+    {
+        foreach ($data as $k => $v) {
+            $this->{$k} = $v;
+        }
+        $this->save();
+    }
+
+    public function __set($name, $value)
+    {
+        $this->_data[$name] = $value;
+    }
+
+    public function __get($name)
+    {
+        return $this->_data[$name] ?? null;
+    }
+
+    public function save()
+    {
+        $params = [
+            '::table' => $this->_table->getTableName(),
+        ];
+        $cols = [];
+        $vals = [];
+        $update_terms = [];
+        foreach ($this->_data as $col => $val) {
+            if (!array_key_exists($col, $this->_origin_data)) {
+                $cols[] = "::col_{$col}";
+                $vals[] = ":val_{$col}";
+                $params["::col_{$col}"] = $col;
+                $params[":val_{$col}"] = $val;
+            } elseif ($val != $this->_origin_data[$col]) {
+                $update_terms[] = "::col_{$col} = :val_{$col}";
+                $params["::col_{$col}"] = $col;
+                $params[":val_{$col}"] = $val;
+            }
+        }
+        if (!count($update_terms)) {
+            return;
+        }
+        $where_terms = [];
+        foreach ($this->_table->getPrimaryKeys() as $idx => $key) {
+            $where_terms[] = "::id_col_{$idx} = :id_val_{$idx}";
+            $params["::id_col_{$idx}"] = $key;
+            $params[":id_val_{$idx}"] = $this->_origin_data[$key];
+        }
+        $sql = "UPDATE ::table SET " . implode(', ', $update_terms) . " WHERE " . implode(' AND ', $where_terms);
+        MiniEngine::dbExecute($sql, $params);
+        $this->_origin_data = $this->_data;
     }
 }
 
@@ -764,6 +817,29 @@ class MiniEngine_Table_Rowset implements Countable, SeekableIterator
     }
 }
 
+class MiniEngine_Prompt
+{
+    public static function init()
+    {
+        if (file_exists(__DIR__ . '/init.inc.php')) {
+            include(__DIR__ . '/init.inc.php');
+        }
+
+        while($line = readline(">> ")) {
+            if (function_exists('readline_add_history')) {
+                readline_add_history($line);
+            }
+            try {
+                eval($line . ";");
+                echo "\n";
+            } catch (Exception $e) {
+                echo $e->getMessage() . "\n";
+                echo $e->getTraceAsString() . "\n";
+            }
+        }
+    }
+}
+
 class MiniEngineCLI
 {
     public static function dispatch()
@@ -775,6 +851,9 @@ class MiniEngineCLI
                 break;
             case 'update':
                 self::cmd_update();
+                break;
+            case 'prompt':
+                MiniEngine_Prompt::init();
                 break;
             default:
                 self::cmd_help();
@@ -831,7 +910,7 @@ class MiniEngineCLI
 
 define('MINI_ENGINE_LIBRARY', true);
 define('MINI_ENGINE_ROOT', __DIR__);
-include(__DIR__ . '/mini-engine.php');
+require_once(__DIR__ . '/mini-engine.php');
 if (file_exists(__DIR__ . '/config.inc.php')) {
     include(__DIR__ . '/config.inc.php');
 }
@@ -995,6 +1074,7 @@ EOF
         echo "Commands:\n";
         echo "  init    Initialize a new Mini Engine project\n";
         echo "  update  Update Mini Engine\n";
+        echo "  prompt  Prompt for a command\n";
     }
 }
 
