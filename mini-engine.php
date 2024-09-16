@@ -102,8 +102,25 @@ class MiniEngine
 
     public static function dbExecute($sql, $params = [])
     {
+        $db = self::getDb();
+        $copy_params = $params;
+        // handle ::table, ::cols to escape table and column names
+        $sql = preg_replace_callback('/::[a-z_0-9A-Z]+/', function($matches) use ($db, $params, &$copy_params) {
+            $driver = $db->getAttribute(PDO::ATTR_DRIVER_NAME);
+            unset($copy_params[$matches[0]]);
+            if (!array_key_exists($matches[0], $params)) {
+                throw new Exception("Parameter not found: {$matches[0]}");
+            }
+            if ('pgsql' == $driver) {
+                return '"' . $params[$matches[0]] . '"';
+            } elseif ('mysql' == $driver) {
+                return '`' . $params[$matches[0]] . '`';
+            } else {
+                throw new Exception("Unsupported database driver: $driver");
+            }
+        }, $sql);
         $stmt = self::getDb()->prepare($sql);
-        $stmt->execute($params);
+        $stmt->execute($copy_params);
         return $stmt;
     }
 
@@ -441,6 +458,294 @@ class MiniEngine_Controller
         }
         echo "</script>";
         return $this->noview();
+    }
+}
+
+class MiniEngine_Table
+{
+    protected static $_tables = [];
+
+    protected $_name = null;
+    protected $_primary_keys = null;
+    protected $_table = null;
+
+    public function init()
+    {
+    }
+
+    public function __construct()
+    {
+        // do nothing
+    }
+
+    public function __init()
+    {
+        $this->init();
+        if (is_null($this->_table)) {
+            $this->_table = $this->getTableName();
+        }
+    }
+
+    protected static $_debug = 0;
+    public static function getTableClass()
+    {
+        $class = get_called_class();
+        if (!isset(self::$_tables[$class])) {
+            self::$_tables[$class] = new $class();
+            self::$_tables[$class]->__init();
+        }
+        return self::$_tables[$class];
+    }
+
+    public static function getTableName()
+    {
+        $table = self::getTableClass();
+        if (is_null($table->_name)) {
+            $table->_name = strtolower(get_called_class());
+        }
+        return $table->_name;
+    }
+
+    public function getResultSetClass()
+    {
+        if (class_exists(get_called_class() . 'Rowset')) {
+            return get_called_class() . 'Rowset';
+        }
+        return 'MiniEngine_Table_Rowset';
+    }
+
+    public function getRowClass()
+    {
+        if (class_exists(get_called_class() . 'Row')) {
+            return get_called_class() . 'Row';
+        }
+        return 'MiniEngine_Table_Row';
+    }
+
+    public static function getPrimaryKeys()
+    {
+        $table = self::getTableClass();
+        if (is_null($table->_primary_keys)) {
+            $table->_primary_keys = ['id'];
+        }
+        if (is_string($table->_primary_keys)) {
+            $table->_primary_keys = [$table->_primary_keys];
+        }
+        return $table->_primary_keys;
+    }
+
+    public static function insert($data)
+    {
+        $table = self::getTableClass();
+        $params = [
+            '::table' => $table->getTableName(),
+        ];
+        $cols = [];
+        $vals = [];
+        foreach ($data as $col => $val) {
+            $cols[] = "::col_{$col}";
+            $vals[] = ":val_{$col}";
+            $params["::col_{$col}"] = $col;
+            $params[":val_{$col}"] = $val;
+        }
+        $sql = "INSERT INTO ::table (" . implode(', ', $cols) . ") VALUES (" . implode(', ', $vals) . ")";
+        $stmt = MiniEngine::dbExecute($sql, $params);
+        $insert_id = MiniEngine::getDb()->lastInsertId();
+        if (!$insert_id) {
+            throw new Exception("Unable to get last insert id.");
+        }
+        return $table->find($insert_id);
+    }
+
+    public static function find($id)
+    {
+        $table = self::getTableClass();
+        $primary_keys = $table->getPrimaryKeys();
+        if (is_scalar($id)) {
+            $id = [$id];
+        }
+        if (count($id) != count($primary_keys)) {
+            throw new Exception("Primary key count mismatch.");
+        }
+        $terms = [];
+        $params = [
+            '::table' => $table->getTableName(),
+        ];
+        foreach ($primary_keys as $idx => $key) {
+            $terms[] = "::id_col_{$idx} = :id_val_{$idx}";
+            $params["::id_col_{$idx}"] = $key;
+            $params[":id_val_{$idx}"] = $id[$idx];
+        }
+        $sql = "SELECT * FROM ::table WHERE " . implode(' AND ', $terms);
+        $stmt = MiniEngine::dbExecute($sql, $params);
+        return $stmt->fetchObject();
+    }
+
+    public static function search($terms)
+    {
+        $table = self::getTableClass();
+        $conf = [];
+        $conf['table'] = $table;
+        $rowset_class = $table->getResultSetClass();
+        $rowset = new $rowset_class($conf);
+        return $rowset->search($terms);
+    }
+
+    public static function __callStatic($name, $args)
+    {
+        $table = self::getTableClass();
+        return $table->__call($name, $args);
+    }
+
+    public function __call($name, $args)
+    {
+        $table = self::getTableClass();
+        if (preg_match('#^find_by_([a-zA-Z0-9_]+)$#', $name, $matches)) {
+            $cols = explode('_and_', $matches[1]);
+            return $table->search(array_combine($cols, $args))->first();
+        }
+        throw new Exception("Method not found: $name");
+    }
+}
+
+class MiniEngine_Table_Row
+{
+    protected $_table = null;
+    protected $_data = null;
+
+    public function __construct($conf)
+    {
+        $this->_table = $conf['table'];
+        $this->_data = $conf['data'];
+    }
+
+    public function toArray()
+    {
+        return $this->_data;
+    }
+
+    public function delete()
+    {
+        $params = [
+            '::table' => $this->_table->getTableName(),
+        ];
+        $terms = [];
+        foreach ($this->_table->getPrimaryKeys() as $idx => $key) {
+            $terms[] = "::id_col_{$idx} = :id_val_{$idx}";
+            $params["::id_col_{$idx}"] = $key;
+            $params[":id_val_{$idx}"] = $this->_data[$key];
+        }
+        $sql = "DELETE FROM ::table WHERE " . implode(' AND ', $terms);
+        MiniEngine::dbExecute($sql, $params);
+    }
+}
+
+class MiniEngine_Table_Rowset implements Countable, SeekableIterator
+{
+    protected $_table = null;
+    protected $_data = null;
+    protected $_pointer = 0;
+    protected $_search = [];
+
+    public function __construct($conf)
+    {
+        $this->_table = $conf['table'];
+    }
+
+    public function search()
+    {
+        $rs = clone $this;
+        $args = func_get_args();
+        $rs->_search[] = $args;
+        return $rs;
+    }
+
+    public function getSearchQuery(&$params)
+    {
+        $terms = [];
+        foreach ($this->_search as $search) {
+            if (count($search) == 1 and is_array($search[0])) {
+                $search = $search[0];
+                foreach (array_keys($search) as $idx => $col) {
+                    $terms[] = "::col_{$idx} = :val_{$idx}";
+                    $params["::col_{$idx}"] = $col;
+                    $params[":val_{$idx}"] = $search[$col];
+                }
+            } elseif (count($search) == 1 and is_scalar($search[0]) and 1 == $search[0]) {
+            } else {
+                throw new Exception("Unsupported search query." . json_encode($search));
+            }
+        }
+        if (count($terms) == 0) {
+            return '1=1';
+        }
+        return implode(' AND ', $terms);
+    }
+
+    public function count()
+    {
+        $params = [
+            '::table' => $this->_table->getTableName(),
+        ];
+        $sql = "SELECT COUNT(*) AS count FROM ::table WHERE " . $this->getSearchQuery($params);
+        $stmt = MiniEngine::dbExecute($sql, $params);
+        return $stmt->fetchColumn();
+    }
+
+    public function seek($position)
+    {
+        throw new Exception("Not implemented.");
+    }
+
+    public function current()
+    {
+        if (is_null($this->_data)) {
+            $this->rewind();
+        }
+        if (!isset($this->_data[$this->_pointer])) {
+            return null;
+        }
+        $conf = [];
+        $conf['data'] = $this->_data[$this->_pointer];
+        $conf['table'] = $this->_table;
+        $row_class = $this->_table->getRowClass();
+        return new $row_class($conf);
+    }
+
+    public function next()
+    {
+        ++ $this->_pointer;
+    }
+
+    public function key()
+    {
+        return $this->_pointer;
+    }
+
+    public function valid()
+    {
+        if (is_null($this->_data)) {
+            $this->rewind();
+        }
+        return isset($this->_data[$this->_pointer]);
+    
+    }
+
+    public function rewind()
+    {
+        $params = [
+            '::table' => $this->_table->getTableName(),
+        ];
+        $sql = "SELECT * FROM ::table WHERE " . $this->getSearchQuery($params);
+        $stmt = MiniEngine::dbExecute($sql, $params);
+        $this->_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $this->_pointer = 0;
+    }
+
+    public function first()
+    {
+        $this->rewind();
+        return $this->current();
     }
 }
 
