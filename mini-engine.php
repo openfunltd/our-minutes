@@ -46,14 +46,8 @@ class MiniEngine
         }
     }
 
-    public static function setSession($key, $value)
+    public static function writeSession()
     {
-        self::initSessionData();
-        if (self::$session_data->{$key} === $value) {
-            return;
-        }
-        self::$session_data->{$key} = $value;
-
         $session_secret = getenv('SESSION_SECRET');
         if (!$session_secret) {
             throw new Exception("SESSION_SECRET is not set.");
@@ -70,6 +64,27 @@ class MiniEngine
             self::getSessionDomain(), // domain
             true // secure
         );
+    }
+
+    public static function deleteSession($key)
+    {
+        self::initSessionData();
+        if (!property_exists(self::$session_data, $key)) {
+            return;
+        }
+        unset(self::$session_data->{$key});
+
+        self::writeSession();
+    }
+
+    public static function setSession($key, $value)
+    {
+        self::initSessionData();
+        if (property_exists(self::$session_data, $key) and self::$session_data->{$key} === $value) {
+            return;
+        }
+        self::$session_data->{$key} = $value;
+        self::writeSession();
     }
 
     public static function sessionSignature($data)
