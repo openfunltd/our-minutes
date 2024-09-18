@@ -544,7 +544,15 @@ class MiniEngine_Table
     {
         $table = self::getTableClass();
         if (is_null($table->_name)) {
-            $table->_name = strtolower(get_called_class());
+            // User => user, MeetingMember => meeting_member
+            $table_name = get_called_class();
+            $table_name = preg_replace_callback('/[A-Z]+/', function($matches) {
+                if ($matches[0][1] == 0) {
+                    return strtolower($matches[0][0]);
+                }
+                return '_' . strtolower($matches[0][0]);
+            }, $table_name, -1, $count, PREG_OFFSET_CAPTURE);
+            return $table_name;
         }
         return $table->_name;
     }
