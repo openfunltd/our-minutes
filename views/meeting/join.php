@@ -19,7 +19,9 @@
 <div id="area-dashboard" style="display:none">
     <p>會議：<?= $this->escape($this->meeting->d('name')) ?></p>
     <p>議程：<span id="current-agenda"></span></p>
-    <button type="button" class="btn btn-primary">舉手</button>
+    <button type="button" class="btn btn-primary" id="action-raise-hand">舉手
+        <span id="raise-hand-status"></span>
+    </button>
     <button type="button" class="btn btn-primary">我要發言</button>
 
     <ul class="nav nav-tabs" id="myTab" role="tablist">
@@ -54,7 +56,7 @@
         </div>
 <script id="tmpl-person-card" type="text/html">
 <div class="card">
-    <h5 class="card-header">[桌長] Alice</h5>
+    <h5 class="card-header"><span class="name"></span><span class="is_raised"></span></h5>
     <div class="card-body">
         <h5 class="card-title">很會討論有限公司專案經理</h5>
     </div>
@@ -107,7 +109,7 @@ $('#join-form').submit(function(e){
                 profile = profiles[user_id];
                 var card_dom = $($('#tmpl-person-card').html());
 				card_dom.attr('data-user-id', user_id);
-                $('.card-header', card_dom).text(profile.name);
+                $('.name', card_dom).text(profile.name);
                 $('.card-title', card_dom).text(profile.intro);
                 $('#profile').append(card_dom);
             }
@@ -124,6 +126,14 @@ $('#join-form').submit(function(e){
             $('.card-title', card_dom).text(profile.intro);
             $('#profile').append(card_dom);
             $('#person-count').text($('#profile .card').length);
+        } else if (data[0] == 'set') {
+            user_id = data[1].user_id;
+            profile = data[1].profile;
+            if (profile.raise_hand) {
+                $('.card[data-user-id="' + user_id + '"] .is_raised').text('🙋');
+            } else {
+                $('.card[data-user-id="' + user_id + '"] .is_raised').text('');
+            }
         } else if (data[0] == 'leave') {
             user_id = data[1].user_id;
             $('.card[data-user-id="' + user_id + '"]').remove();
@@ -135,6 +145,31 @@ $('#join-form').submit(function(e){
   }
   $('#join-form').hide();
   $('#area-dashboard').show();
+});
+
+$('#action-raise-hand').click(function(){
+    if ($('#action-raise-hand').is('.is_raised')) {
+        webSocket.send(JSON.stringify({
+            type: 'set',
+            profile: {
+                raise_hand: null,
+            }
+        }));
+        $('#action-raise-hand').removeClass('is_raised');
+        $('#raise-hand-status').text('');
+        return;
+    } else {
+        webSocket.send(JSON.stringify({
+            type: 'set',
+            profile: {
+                raise_hand: new Date().getTime(),
+            }
+        }));
+        $('#action-raise-hand').addClass('is_raised');
+        // emoji hand
+        $('#raise-hand-status').text('🙋');
+    
+    }
 });
 </script>
 <?= $this->partial('common/footer') ?>
