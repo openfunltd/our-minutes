@@ -34,6 +34,15 @@ class MeetingRow extends MiniEngine_Table_Row
     {
         return json_decode($this->data)->{$key} ?? null;
     }
+
+    public function getAgendas()
+    {
+        $agenda = trim($this->d('agenda'));
+        if (!$agenda) {
+            return [];
+        }
+        return array_map('trim', explode("\n", $agenda));
+    }
 }
 
 class Meeting extends MiniEngine_Table

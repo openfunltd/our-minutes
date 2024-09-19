@@ -51,13 +51,12 @@ class MeetingController extends MiniEngine_Controller
             if ($_POST['csrf_token'] != $this->view->csrf_token) {
                 return $this->alert('csrf error', '/');
             }
-            $meeting->data = json_encode([
+            $meeting->change([
                 'name' => $_POST['name'],
                 'intro' => $_POST['intro'],
                 'time' => $_POST['time'],
                 'agenda' => $_POST['agenda'],
             ]);
-            $meeting->save();
             return $this->alert('update success', '/meeting/show/' . $meeting->uid);
         }
     }
@@ -92,6 +91,6 @@ class MeetingController extends MiniEngine_Controller
         if ($meeting->d('join_secret') != $secret) {
             return $this->notfound('secret error');
         }
-        return $this->notfound('TODO');
+        $this->view->meeting = $meeting;
     }
 }
