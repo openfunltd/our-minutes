@@ -27,7 +27,7 @@
             <a class="nav-link active" id="home-tab" data-bs-toggle="tab" href="#home" role="tab" aria-controls="home" aria-selected="true">會議</a>
         <li class="nav-item" role="presentation">
             <!-- 成員 -->
-            <a class="nav-link" id="profile-tab" data-bs-toggle="tab" href="#profile" role="tab" aria-controls="profile" aria-selected="false">成員</a>
+            <a class="nav-link" id="profile-tab" data-bs-toggle="tab" href="#profile" role="tab" aria-controls="profile" aria-selected="false">成員(<span id="person-count"></span>)</a>
         </li>
         <li class="nav-item" role="presentation">
             <!-- 議程 -->
@@ -111,6 +111,7 @@ $('#join-form').submit(function(e){
                 $('.card-title', card_dom).text(profile.intro);
                 $('#profile').append(card_dom);
             }
+            $('#person-count').text($('#profile .card').length);
         } else if (data[0] == 'join') {
 			user_id = data[1].user_id;
             profile = data[1].profile;
@@ -122,9 +123,11 @@ $('#join-form').submit(function(e){
             $('.card-header', card_dom).text(profile.name);
             $('.card-title', card_dom).text(profile.intro);
             $('#profile').append(card_dom);
+            $('#person-count').text($('#profile .card').length);
         } else if (data[0] == 'leave') {
             user_id = data[1].user_id;
             $('.card[data-user-id="' + user_id + '"]').remove();
+            $('#person-count').text($('#profile .card').length);
         }
     };
     webSocket.onclose = function() {
