@@ -130,7 +130,7 @@ $('#join-form').submit(function(e){
             }
             var card_dom = $($('#tmpl-person-card').html());
             card_dom.attr('data-user-id', user_id);
-            $('.card-header', card_dom).text(profile.name);
+            $('.name', card_dom).text(profile.name);
             $('.card-title', card_dom).text(profile.intro);
             $('#profile').append(card_dom);
             $('#person-count').text($('#profile .card').length);
