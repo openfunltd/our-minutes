@@ -22,7 +22,9 @@
     <button type="button" class="btn btn-primary" id="action-raise-hand">舉手
         <span id="raise-hand-status"></span>
     </button>
-    <button type="button" class="btn btn-primary" id="action-speak">我要發言</button>
+    <button type="button" class="btn btn-primary" id="action-speak">我要發言
+        <span id="speaking-status"></span>
+    </button>
 
     <ul class="nav nav-tabs" id="myTab" role="tablist">
         <li class="nav-item" role="presentation">
@@ -209,6 +211,7 @@ $('#action-speak').click(function(e){
     e.preventDefault();
     $('#mytalk-tab').tab('show');
     if (!recognition) {
+        $('#speaking-status').text('🎤');
         recognition = new webkitSpeechRecognition();
         speaking_log.start = new Date().getTime();
         speaking_log.draft_start = null;
@@ -254,6 +257,7 @@ $('#action-speak').click(function(e){
         };
         recognition.start();
     } else {
+        $('#speaking-status').text('');
         recognition.stop();
         recognition = null;
     }
