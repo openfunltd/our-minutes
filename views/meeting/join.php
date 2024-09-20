@@ -84,8 +84,16 @@ var webSocket = null;
 var websocket_url = <?= json_encode(getenv('WEBSOCKET_URL')) ?>;
 var room_id = <?= json_encode('ourminutes-' . $this->meeting->uid) ?>;
 
+if (localStorage.getItem('name')) {
+    $('#join-form input[name="name"]').val(localStorage.getItem('name'));
+}
+if (localStorage.getItem('intro')) {
+    $('#join-form textarea[name="intro"]').val(localStorage.getItem('intro'));
+}
 $('#join-form').submit(function(e){
-  e.preventDefault();
+    e.preventDefault();
+    localStorage.setItem('name', $('#join-form input[name="name"]').val());
+    localStorage.setItem('intro', $('#join-form textarea[name="intro"]').val());
   if (!webSocket) {
     webSocket = new WebSocket(websocket_url);
     webSocket.onopen = function() {
