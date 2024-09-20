@@ -7,12 +7,12 @@
     </div>
     <div class="alert alert-light" role="alert"><?= $this->escape($this->meeting->d('intro')) ?></div>
     <div class="mb-3">
-        <label for="exampleFormControlInput1" class="form-label">該如何稱呼您？</label>
-        <input type="text" name="name" class="form-control" id="exampleFormControlInput1" value="">
+        <label for="my-name" class="form-label">該如何稱呼您？</label>
+        <input type="text" name="name" class="form-control" id="my-name" value="">
     </div>
     <div class="mb-3">
-        <label for="exampleFormControlTextarea1" class="form-label">您的簡介（可不填寫）</label>
-        <textarea class="form-control" name="intro" id="exampleFormControlTextarea1" rows="3"></textarea>
+        <label for="my-intro" class="form-label">您的簡介（可不填寫）</label>
+        <textarea class="form-control" name="intro" id="my-intro" rows="3"></textarea>
     </div>
     <button type="submit" class="btn btn-primary">加入會議</button>
 </form>
@@ -22,7 +22,7 @@
     <button type="button" class="btn btn-primary" id="action-raise-hand">舉手
         <span id="raise-hand-status"></span>
     </button>
-    <button type="button" class="btn btn-primary">我要發言</button>
+    <button type="button" class="btn btn-primary" id="action-speak">我要發言</button>
 
     <ul class="nav nav-tabs" id="myTab" role="tablist">
         <li class="nav-item" role="presentation">
@@ -64,16 +64,12 @@
 </script>
         <div class="tab-pane fade" id="mytalk" role="tabpanel" aria-labelledby="mytalk-tab">
             <h1>您的發言</h1>
-            <textarea class="form-control" id="exampleFormControlTextarea1" rows="8">我覺得政府應該請各行業優先盤點會受到 AI 衝擊的行業 請各行業自行評估受到衝擊 預計減少的人力數量 然後政府根據統計公布行業排名 並且公布提早建議求職者轉職或挑選其他工作 至於現在還在該職場的 希望政府要鼓勵老闆要投入資源讓該員工學會 AI 工具 讓現有員工都成為好的 AI 操作員 這樣他們並不是被 AI 取代 而是與 AI 協作 也能推進產業發展</textarea>
+            <textarea class="form-control" id="myspeak" rows="8"></textarea>
             <p>您可以手動修改 AI 辨識錯誤的地方</p>
             <button type="button" class="btn btn-primary">確認無誤，嘗試用 AI 摘要</button>
             <h1>AI 摘要</h1>
-            <textarea class="form-control" rows="5">1. 政府應該請各行業優先盤點會受到 AI 衝擊的行業
-2. 請各行業自行評估受到衝擊，預計減少的人力數量
-3. 政府根據統計公布行業排名
-4. 公布提早建議求職者轉職或挑選其他工作
-5. 希望政府要鼓勵老闆要投入資源讓該員工學會 AI 工具</textarea>
-    <button type="button" class="btn btn-primary">確認無誤，發言</button>
+            <textarea class="form-control" rows="5"></textarea>
+            <button type="button" class="btn btn-primary">確認無誤，發言</button>
         </div>
         <div class="tab-pane fade" id="alltalk" role="tabpanel" aria-labelledby="alltalk-tab">
 
@@ -108,7 +104,6 @@ $('#join-form').submit(function(e){
     };
     webSocket.onmessage = function(event) {
         var data = JSON.parse(event.data);
-        console.log(data);
         if (data[0] == 'room-info') {
             $('#profile').html('');
             room_data = data[1].room;
@@ -179,5 +174,90 @@ $('#action-raise-hand').click(function(){
     
     }
 });
+
+let getHHiiss = function(date) {
+    // 00:00:00
+    t = [date.getHours(), date.getMinutes(), date.getSeconds()];
+    for (i = 0; i < t.length; i++) {
+        if (t[i] < 10) {
+            t[i] = '0' + t[i];
+        }
+    }
+    return t.join(':');
+};
+
+let build_speaking_message = function() {
+    let message = '';
+    for (let i = 0; i < speaking_log.sentences.length; i++) {
+        // HH:ii:ss
+        start_time = new Date(speaking_log.sentences[i].start);
+        end_time = new Date(speaking_log.sentences[i].end);
+        message += '[' + getHHiiss(start_time) + ' - ' + getHHiiss(end_time) + '] ';
+        message += speaking_log.sentences[i].text;
+        message += "\n";
+    }
+    if (speaking_log.draft_start) {
+        message += '[' + getHHiiss(new Date(speaking_log.draft_start)) + ' - ] ';
+        message += speaking_log.draft;
+    }
+    return message;
+};
+
+let recognition = null;
+speaking_log = {};
+$('#action-speak').click(function(e){
+    e.preventDefault();
+    $('#mytalk-tab').tab('show');
+    if (!recognition) {
+        recognition = new webkitSpeechRecognition();
+        speaking_log.start = new Date().getTime();
+        speaking_log.draft_start = null;
+        speaking_log.sentences = [];
+        speaking_log.draft = '';
+
+        //recognition.continuous = true;
+        recognition.interimResults = true;
+        //recognition.lang = 'cmn-Hant-TW';
+        recognition.onresult = function(event) {
+            for (var i = event.resultIndex; i < event.results.length; ++i) {
+                if (null === speaking_log.draft_start) {
+                    speaking_log.draft_start = new Date().getTime();
+                }
+                if (event.results[i].isFinal) {
+                    text = event.results[i][0].transcript;
+                    if (text.length) {
+                        speaking_log.sentences.push({
+                            start: speaking_log.draft_start,
+                            end: new Date().getTime(),
+                            text: event.results[i][0].transcript,
+                        });
+                        speaking_log.draft = '';
+                    }
+                    speaking_log.draft_start = null;
+                } else {
+                    if (event.results[i][0].transcript.length) {
+                        speaking_log.draft = event.results[i][0].transcript;
+                    }
+                }
+            }
+            message = build_speaking_message();
+            $('#myspeak').val(message);
+            webSocket.send(JSON.stringify({
+                type: 'set',
+                profile: {
+                    speaking: message,
+                }
+            }));
+        };
+        recognition.onend = function(event){
+                recognition.start();
+        };
+        recognition.start();
+    } else {
+        recognition.stop();
+        recognition = null;
+    }
+});
+
 </script>
 <?= $this->partial('common/footer') ?>
