@@ -207,6 +207,7 @@ let build_speaking_message = function() {
 
 let recognition = null;
 speaking_log = {};
+speaking_last_sent = null;
 $('#action-speak').click(function(e){
     e.preventDefault();
     $('#mytalk-tab').tab('show');
@@ -245,10 +246,17 @@ $('#action-speak').click(function(e){
             }
             message = build_speaking_message();
             $('#myspeak').val(message);
+            if (speaking_last_sent && new Date().getTime() - speaking_last_sent < 5 * 1000) {
+                return;
+            }
+            speaking_last_sent = new Date().getTime();
             webSocket.send(JSON.stringify({
                 type: 'set',
                 profile: {
-                    speaking: message,
+                    speaking: {
+                        message: message,
+                        start: speaking_log.start,
+                    },
                 }
             }));
         };
