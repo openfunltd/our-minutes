@@ -92,5 +92,28 @@ class MeetingController extends MiniEngine_Controller
             return $this->notfound('secret error');
         }
         $this->view->meeting = $meeting;
+        $this->view->upload_url = '/meeting/uploadaudio/' . $meet_id . '/' . $secret;
+    }
+
+    public function uploadaudioAction($meet_id, $secret)
+    {
+        if (!$meeting = Meeting::search(['uid' => $meet_id])->first()) {
+            return $this->notfound('meeting not found');
+        }
+        if ($meeting->d('join_secret') != $secret) {
+            return $this->notfound('secret error');
+        }
+        if (!$_FILES) {
+            return $this->json(['error' => 'no file']);
+        }
+
+        $file = $_FILES['audio'];
+        if (!file_exists('/tmp/uploads')) {
+            mkdir('/tmp/uploads', 0777, true);
+        }
+        $filename = sprintf("%s-%s-%s", $meet_id, $_POST['user_id'], $_POST['start']);
+        $path = '/tmp/uploads/' . $filename . '.mp3';
+        move_uploaded_file($file['tmp_name'], $path);
+        return $this->json(['path' => $path]);
     }
 }

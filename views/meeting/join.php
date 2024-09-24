@@ -106,7 +106,7 @@ $('#join-form').submit(function(e){
     });
     connection.on('room-info', function(event){
         $('#profile').html('');
-        for (var user_id in connection.room_info.room_data.users) {
+        for (var user_id in connection.room_data.users) {
             profile = connection.profiles[user_id];
             var card_dom = $($('#tmpl-person-card').html());
             card_dom.attr('data-user-id', user_id);
@@ -174,7 +174,7 @@ $('#join-form').submit(function(e){
                 card_dom = $('#' + id);
             }
             $('.time', card_dom).text(new Date(message.speaking.start).toLocaleTimeString());
-            $('.name', card_dom).text(event.profile.name);
+            $('.name', card_dom).text(event.name);
             $('.card-body', card_dom).text(message.speaking.message);
         }
     });
@@ -183,7 +183,6 @@ $('#join-form').submit(function(e){
 });
 
 $('#action-raise-hand').click(function(){
-        
     if ($('#action-raise-hand').is('.is_raised')) {
         connection.changeProfile({
             raise_hand: null,
@@ -231,12 +230,36 @@ let build_speaking_message = function() {
 };
 
 let recognition = null;
+let mediaRecorder;
 speaking_log = {};
 speaking_last_sent = null;
 $('#action-speak').click(function(e){
     e.preventDefault();
     $('#mytalk-tab').tab('show');
     if (!recognition) {
+        navigator.mediaDevices.getUserMedia({audio: true}).then(function(stream){
+            mediaRecorder = new MediaRecorder(stream);
+            let chunks = [];
+            mediaRecorder.onstop = async function (e) {
+                const blob = new Blob(chunks, { type: 'audio/mpeg' });
+                //const audio = new Audio(URL.createObjectURL(blob));
+                //audio.play();
+                const formData = new FormData();
+                formData.append('audio', blob);
+                formData.append('csrf_token', <?= json_encode($this->csrf_token) ?>);
+                formData.append('user_id', connection.user_id);
+                formData.append('start', speaking_log.start);
+                const response = await fetch(<?= json_encode($this->upload_url) ?>, {
+                    method: 'POST',
+                    body: formData,
+                });
+            };
+            mediaRecorder.ondataavailable = function (e) {
+                chunks.push(e.data);
+            };
+            mediaRecorder.start();
+        });
+
         $('#speaking-status').text('\u{1F3A4}');
         recognition = new webkitSpeechRecognition();
         speaking_log.start = new Date().getTime();
@@ -283,15 +306,22 @@ $('#action-speak').click(function(e){
             });
         };
         recognition.onend = function(event){
+            if ($('#action-speak').is('.speaking')) {
                 recognition.start();
+            }
         };
         recognition.start();
+        $('#action-speak').addClass('speaking');
     } else {
         $('#speaking-status').text('');
+        $('#action-speak').removeClass('speaking');
         recognition.stop();
+
         connection.changeProfile({
             speaking: null,
         });
+        mediaRecorder.stop();
+
         connection.sendMessage({
             type: 'speak',
             speaking: {
@@ -299,7 +329,6 @@ $('#action-speak').click(function(e){
                 start: speaking_log.start,
             },
         });
-        recognition = null;
     }
 });
 
