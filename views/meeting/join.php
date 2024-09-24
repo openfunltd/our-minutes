@@ -74,12 +74,20 @@
             <button type="button" class="btn btn-primary">確認無誤，發言</button>
         </div>
         <div class="tab-pane fade" id="alltalk" role="tabpanel" aria-labelledby="alltalk-tab">
-
-    </div>
-</div>
+        </div>
+<script id="tmpl-speak" type="text/html">
+<div class="card">
+  <div class="card-header">
+    [<span class="time"></span>]
+    <span class="name"></span>
+  </div>
+  <div class="card-body">
+  </div>
+  </div>
+</script>
 <script>
-var webSocket = null;
-var websocket_url = <?= json_encode(getenv('WEBSOCKET_URL')) ?>;
+var connection = null;
+var chatroom_url = <?= json_encode(getenv('WEBSOCKET_URL')) ?>;
 var room_id = <?= json_encode('ourminutes-' . $this->meeting->uid) ?>;
 
 if (localStorage.getItem('name')) {
@@ -92,87 +100,104 @@ $('#join-form').submit(function(e){
     e.preventDefault();
     localStorage.setItem('name', $('#join-form input[name="name"]').val());
     localStorage.setItem('intro', $('#join-form textarea[name="intro"]').val());
-  if (!webSocket) {
-    webSocket = new WebSocket(websocket_url);
-    webSocket.onopen = function() {
-        webSocket.send(JSON.stringify({
-            type: 'join',
-            profile: {
-                name: $('#join-form input[name="name"]').val(),
-                intro: $('#join-form textarea[name="intro"]').val(),
-            },
-            room: room_id,
-        }));
-    };
-    webSocket.onmessage = function(event) {
-        var data = JSON.parse(event.data);
-        if (data[0] == 'room-info') {
-            $('#profile').html('');
-            room_data = data[1].room;
-            profiles = data[1].profiles;
-            for (var user_id in room_data.users) {
-                profile = profiles[user_id];
-                var card_dom = $($('#tmpl-person-card').html());
-				card_dom.attr('data-user-id', user_id);
-                $('.name', card_dom).text(profile.name);
-                $('.card-title', card_dom).text(profile.intro);
-                $('#profile').append(card_dom);
-            }
-            $('#person-count').text($('#profile .card').length);
-        } else if (data[0] == 'join') {
-			user_id = data[1].user_id;
-            profile = data[1].profile;
-            if ($('.card[data-user-id="' + user_id + '"]').length) {
-                return;
-            }
+    connection = WSChatRoom.connect(chatroom_url, room_id, {
+        name: $('#join-form input[name="name"]').val(),
+        intro: $('#join-form textarea[name="intro"]').val(),
+    });
+    connection.on('room-info', function(event){
+        $('#profile').html('');
+        for (var user_id in connection.room_info.room_data.users) {
+            profile = connection.profiles[user_id];
             var card_dom = $($('#tmpl-person-card').html());
             card_dom.attr('data-user-id', user_id);
             $('.name', card_dom).text(profile.name);
             $('.card-title', card_dom).text(profile.intro);
             $('#profile').append(card_dom);
-            $('#person-count').text($('#profile .card').length);
-        } else if (data[0] == 'set') {
-            user_id = data[1].user_id;
-            profile = data[1].profile;
-            if (profile.raise_hand) {
-                $('.card[data-user-id="' + user_id + '"] .is_raised').text('🙋');
-            } else {
-                $('.card[data-user-id="' + user_id + '"] .is_raised').text('');
-            }
-        } else if (data[0] == 'leave') {
-            user_id = data[1].user_id;
-            $('.card[data-user-id="' + user_id + '"]').remove();
-            $('#person-count').text($('#profile .card').length);
         }
-    };
-    webSocket.onclose = function() {
-    };
-  }
-  $('#join-form').hide();
-  $('#area-dashboard').show();
+        $('#person-count').text($('#profile .card').length);
+    });
+    connection.on('join', function(event){
+        user_id = event.user_id;
+        profile = event.profile;
+
+        if ($('.card[data-user-id="' + user_id + '"]').length) {
+            return;
+        }
+        var card_dom = $($('#tmpl-person-card').html());
+        card_dom.attr('data-user-id', user_id);
+        $('.name', card_dom).text(profile.name);
+        $('.card-title', card_dom).text(profile.intro);
+        $('#profile').append(card_dom);
+        $('#person-count').text($('#profile .card').length);
+    });
+    connection.on('set', function(event){
+        user_id = event.user_id;
+        profile = event.profile;
+
+        if (profile.raise_hand) {
+            // raise hand emoji hex code
+            $('.card[data-user-id="' + user_id + '"] .is_raised').text('\u{1F64B}');
+        } else {
+            $('.card[data-user-id="' + user_id + '"] .is_raised').text('');
+        }
+
+        if (profile.speaking) {
+            id = "speak-" + user_id + "-" + profile.speaking.start;
+            if (!$('#' + id).length) {
+                var card_dom = $($('#tmpl-speak').html());
+                card_dom.attr('id', id);
+                $('#alltalk').prepend(card_dom);
+            } else {
+                card_dom = $('#' + id);
+            }
+            $('.time', card_dom).text(new Date(profile.speaking.start).toLocaleTimeString());
+            $('.name', card_dom).text(profile.name);
+            $('.card-body', card_dom).text(profile.speaking.message);
+        }
+    });
+    connection.on('leave', function(event){
+        user_id = event.user_id;
+        $('.card[data-user-id="' + user_id + '"]').remove();
+        $('#person-count').text($('#profile .card').length);
+    });
+    connection.on('message', function(event){
+        user_id = event.from;
+        message = event.message;
+
+        if (message.type == 'speak') {
+            id = "speak-" + user_id + "-" + message.speaking.start;
+            if (!$('#' + id).length) {
+                var card_dom = $($('#tmpl-speak').html());
+                card_dom.attr('id', id);
+                $('#alltalk').prepend(card_dom);
+            } else {
+                card_dom = $('#' + id);
+            }
+            $('.time', card_dom).text(new Date(message.speaking.start).toLocaleTimeString());
+            $('.name', card_dom).text(event.profile.name);
+            $('.card-body', card_dom).text(message.speaking.message);
+        }
+    });
+    $('#join-form').hide();
+    $('#area-dashboard').show();
 });
 
 $('#action-raise-hand').click(function(){
+        
     if ($('#action-raise-hand').is('.is_raised')) {
-        webSocket.send(JSON.stringify({
-            type: 'set',
-            profile: {
-                raise_hand: null,
-            }
-        }));
+        connection.changeProfile({
+            raise_hand: null,
+        });
         $('#action-raise-hand').removeClass('is_raised');
         $('#raise-hand-status').text('');
         return;
     } else {
-        webSocket.send(JSON.stringify({
-            type: 'set',
-            profile: {
-                raise_hand: new Date().getTime(),
-            }
-        }));
+        connection.changeProfile({
+            raise_hand: new Date().getTime(),
+        });
         $('#action-raise-hand').addClass('is_raised');
         // emoji hand
-        $('#raise-hand-status').text('🙋');
+        $('#raise-hand-status').text('\u{1F64B}');
     
     }
 });
@@ -212,7 +237,7 @@ $('#action-speak').click(function(e){
     e.preventDefault();
     $('#mytalk-tab').tab('show');
     if (!recognition) {
-        $('#speaking-status').text('🎤');
+        $('#speaking-status').text('\u{1F3A4}');
         recognition = new webkitSpeechRecognition();
         speaking_log.start = new Date().getTime();
         speaking_log.draft_start = null;
@@ -250,15 +275,12 @@ $('#action-speak').click(function(e){
                 return;
             }
             speaking_last_sent = new Date().getTime();
-            webSocket.send(JSON.stringify({
-                type: 'set',
-                profile: {
-                    speaking: {
-                        message: message,
-                        start: speaking_log.start,
-                    },
-                }
-            }));
+            connection.changeProfile({
+                speaking: {
+                    message: message,
+                    start: speaking_log.start,
+                },
+            });
         };
         recognition.onend = function(event){
                 recognition.start();
@@ -267,6 +289,16 @@ $('#action-speak').click(function(e){
     } else {
         $('#speaking-status').text('');
         recognition.stop();
+        connection.changeProfile({
+            speaking: null,
+        });
+        connection.sendMessage({
+            type: 'speak',
+            speaking: {
+                message: build_speaking_message(),
+                start: speaking_log.start,
+            },
+        });
         recognition = null;
     }
 });
