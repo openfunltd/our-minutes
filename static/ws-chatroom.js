@@ -27,6 +27,7 @@
         if (data[0] == 'room-info') {
             this.room_data = data[1].room;
             this.profiles = data[1].profiles;
+            this.user_id = data[1].user_id;
             this.fire('room-info', data[1]);
         }
         if (data[0] == 'join') {
